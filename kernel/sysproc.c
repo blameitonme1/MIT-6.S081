@@ -6,7 +6,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
-
+#include "sysinfo.h"
 uint64
 sys_exit(void)
 {
@@ -27,6 +27,32 @@ uint64
 sys_fork(void)
 {
   return fork();
+}
+
+uint64
+sys_trace()
+{
+   // NO arguement here because it's now in the kernel, must use some functions to retrieve arguement
+   int m; //mask
+   if(argint(0, &m) < 0){
+    return -1;
+   } //retrieve mask
+   myproc()->mask = m; //store mask
+   return 0; 
+}
+
+uint64
+sys_sysinfo()
+{
+  struct sysinfo info;
+  info.freemem = amountOfFreeMemory();
+  info.nproc = procNums();
+  uint64 addr;
+  argaddr(0, &addr); //here by default USE a0's value as address, why????
+  if(copyout(myproc()->pagetable, addr, (char*)&info, sizeof(info)) < 0){
+    return -1;
+  }
+  return 0;
 }
 
 uint64

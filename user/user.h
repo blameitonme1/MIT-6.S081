@@ -1,4 +1,5 @@
 struct stat;
+struct sysinfo;
 struct rtcdate;
 
 // system calls
@@ -14,6 +15,7 @@ int exec(char*, char**);
 int open(const char*, int);
 int mknod(const char*, short, short);
 int unlink(const char*);
+int trace(int);
 int fstat(int fd, struct stat*);
 int link(const char*, const char*);
 int mkdir(const char*);
@@ -22,6 +24,7 @@ int dup(int);
 int getpid(void);
 char* sbrk(int);
 int sleep(int);
+int sysinfo(struct sysinfo*);
 int uptime(void);
 
 // ulib.c

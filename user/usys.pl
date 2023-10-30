@@ -16,6 +16,7 @@ sub entry {
 }
 	
 entry("fork");
+entry("trace");
 entry("exit");
 entry("wait");
 entry("pipe");
@@ -35,4 +36,5 @@ entry("dup");
 entry("getpid");
 entry("sbrk");
 entry("sleep");
+entry("sysinfo");
 entry("uptime");
