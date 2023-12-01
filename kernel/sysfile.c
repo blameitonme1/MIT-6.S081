@@ -287,9 +287,11 @@ uint64
 sys_open(void)
 {
   char path[MAXPATH];
+  char sympath[MAXPATH];
   int fd, omode;
   struct file *f;
   struct inode *ip;
+  struct inode *symip; 
   int n;
 
   if((n = argstr(0, path, MAXPATH)) < 0 || argint(1, &omode) < 0)
@@ -315,7 +317,30 @@ sys_open(void)
       return -1;
     }
   }
-
+  if(!(omode & O_NOFOLLOW) && ip->type == T_SYMLINK){
+    // 打开的是一个symbiotic link
+    int threshold = 10;
+    int i = 0;
+    while(ip->type == T_SYMLINK){
+      if(readi(ip, 0, (uint64)&sympath, 0, MAXPATH) == -1){
+        iunlock(ip);
+        end_op();
+        return -1;
+      }
+      iunlock(ip);
+      if((symip = namei(sympath)) == 0){
+        end_op();
+        return -1;
+      }
+      ++i;
+      if(i == threshold){
+        end_op();
+        return -1;
+      }
+      ip = symip;
+      ilock(ip); // 注意要先lock
+    }
+  }
   if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
     iunlockput(ip);
     end_op();
@@ -482,5 +507,60 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64 
+sys_symlink(void){
+  char path[MAXPATH];
+  char target[MAXPATH];
+  char name[DIRSIZ];
+  struct inode *dp, *ip, *sym;
+  if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0){
+    printf("symlink: can't fetch arguement\n");
+    return -1;
+  }
+  begin_op();
+  if((ip = namei(target)) != 0){
+    // 可以不存在target指定的文件
+    ilock(ip);
+    if(ip->type == T_DIR){
+      // 不处理这种情况
+      iunlock(ip);
+      end_op(); //begin_op 和 end_op都是log层的一部分
+      return -1;
+    }
+    iunlockput(ip);
+  }
+  if((dp = nameiparent(path, name)) == 0){
+    // 获取path的父目录
+    end_op();
+    return -1;
+  }
+  ilock(dp);
+  if((sym = dirlookup(dp, name, 0)) != 0){
+    // 读取到path最后那个元素的entry,发现已经有同名文件了。
+    iunlockput(dp);
+    end_op();
+    return -1;
+  }
+  if((sym = ialloc(dp->dev, T_SYMLINK)) == 0){
+    // 分配不成功
+    panic("create : ialloc");
+  }
+  ilock(sym);
+  sym->nlink = 1;
+  iupdate(sym); // 及时更新到disk上去
+
+  if(dirlink(dp, name,sym->inum) < 0) //把符号链接文件加入到path的父目录中
+        panic("create: dirlink");
+  iupdate(dp);
+  if(writei(sym, 0, (uint64)&target, 0, strlen(target)) != strlen(target)){
+    panic("symlink : writei");
+  }
+  iupdate(sym);
+  iunlockput(dp);
+  iunlockput(sym);
+  end_op();
   return 0;
 }

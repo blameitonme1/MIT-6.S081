@@ -407,7 +407,7 @@ bmap(struct inode *ip, uint bn)
     bp = bread(ip->dev, addr);
     a = (uint*)bp->data;
     uint offset = bn % NINDIRECT;
-    bn = (bn - offset) / NINDIRECT; //注意这里避免除法的问题
+    bn /= NINDIRECT; //注意这里避免除法的问题
     if((addr = a[bn]) == 0){
       a[bn] = addr = balloc(ip->dev);
       log_write(bp);
@@ -416,7 +416,7 @@ bmap(struct inode *ip, uint bn)
     bp = bread(ip->dev, addr);
     a = (uint*)bp->data;
     if((addr = a[offset]) == 0){
-      a[bn] = addr = balloc(ip->dev);
+      a[offset] = addr = balloc(ip->dev);
       log_write(bp);
     }
     brelse(bp);
@@ -432,7 +432,10 @@ itrunc(struct inode *ip)
 {
   int i, j;
   struct buf *bp;
+  struct buf *bp1; // 第一级指针
+  struct buf *bp2; // 第二级指针
   uint *a;
+  uint *b;
 
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
@@ -453,6 +456,26 @@ itrunc(struct inode *ip)
     ip->addrs[NDIRECT] = 0;
   }
 
+  if(ip->addrs[NDIRECT + 1]){
+    bp1 = bread(ip->dev, ip->addrs[NDIRECT + 1]); //第一级block
+    a = (uint*)bp1->data;
+    for(j = 0; j < NINDIRECT; j++){
+      if(a[j]){
+      bp2 = bread(ip->dev, a[j]);
+      b = (uint*)bp2->data;
+      for(int k = 0; k < NINDIRECT; ++k){
+        if(b[k]){
+          bfree(ip->dev, b[k]);
+        }
+      }
+      brelse(bp2);
+      bfree(ip->dev, a[j]);
+      }
+    }
+    brelse(bp1);
+    bfree(ip->dev, ip->addrs[NDIRECT + 1]);
+    ip->addrs[NDIRECT + 1] = 0;
+  }
   ip->size = 0;
   iupdate(ip);
 }
